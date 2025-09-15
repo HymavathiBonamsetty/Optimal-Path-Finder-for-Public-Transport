@@ -46,8 +46,11 @@ BusRouteOptimization/
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/yourusername/Optimal-Path-Finder-for-Public-Transport.git
+
+git clone https://github.com/HymavathiBonamsetty/Optimal-Path-Finder-for-Public-Transport.git
+
 cd Optimal-Path-Finder-for-Public-Transport
+
 ```
 
 ### 2. Build C++ Backend
@@ -97,7 +100,7 @@ Agra,Mathura,60
 
 ## Example Output
 
-![Bus Route Shortest Path](output.png)
+![Bus Route Optimization Output](BusRouteOptimization/Output.png)
 
 Author
 
