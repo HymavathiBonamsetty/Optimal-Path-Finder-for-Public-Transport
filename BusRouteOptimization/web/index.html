@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bus Route Planner</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+body { font-family: Arial; background:#f4f6f8; text-align:center; margin:0; padding:0; }
+h1 { color:#2c3e50; margin-top:20px; }
+.container { 
+    background:white; padding:20px; border-radius:12px; box-shadow:0 4px 8px rgba(0,0,0,0.1);
+    max-width:400px; width:100%; margin:auto; margin-top:20px;
+}
+label { font-weight:bold; display:block; margin:10px 0 5px; }
+input, button { width:100%; padding:10px; margin-bottom:15px; border-radius:8px; border:1px solid #ccc; }
+button { background:#3498db; color:white; border:none; font-size:16px; cursor:pointer; }
+button:hover { background:#2980b9; }
+.result { margin-top:20px; background:#ecf0f1; padding:15px; border-radius:8px; }
+.result p { margin:5px 0; }
+#map { border:1px solid #ccc; margin-top:20px; width:900px; height:700px; display:block; margin:auto; background:white; }
+.node { fill:#3498db; stroke:#2c3e50; stroke-width:1.5px; }
+.node.shortest { fill:#e74c3c; }
+.link { stroke:#bdc3c7; stroke-width:1.5px; }
+.link.shortest { stroke:#e74c3c; stroke-width:3px; }
+text { pointer-events:none; }
+</style>
+</head>
+<body>
+
+<h1>Bus Route Planner</h1>
+
+<div class="container">
+    <label>Source:</label>
+    <input type="text" id="src" placeholder="Type source city">
+
+    <label>Destination:</label>
+    <input type="text" id="dst" placeholder="Type destination city">
+
+    <button onclick="findRoute()">Find Route</button>
+
+    <div class="result" id="result" style="display:none;">
+        <p><b>Path:</b> <span id="path"></span></p>
+        <p><b>Total Distance:</b> <span id="distance"></span></p>
+        <p><b>Min Transfers:</b> <span id="transfers"></span></p>
+    </div>
+</div>
+
+<div id="map"></div>
+
+<script>
+// City coordinates
+const cityCoords = {
+    "Vadodara":[73.1812,22.3072], "Mumbai":[72.8777,19.0760], "Delhi":[77.2090,28.6139],
+    "Kanpur":[80.3319,26.4499], "Varanasi":[82.9739,25.3176], "Patna":[85.1376,25.5941],
+    "Gaya":[85.0000,24.7904], "Agra":[78.0081,27.1767], "Mathura":[77.6737,27.4924],
+    "Faridabad":[77.3178,28.4089], "Lucknow":[80.9462,26.8467], "Jaipur":[75.7873,26.9124],
+    "Ajmer":[74.6399,26.4499], "Udaipur":[73.7125,24.5854], "Bikaner":[73.3240,28.0229],
+    "Jodhpur":[73.0243,26.2389], "Chandigarh":[76.7794,30.7333], "Amritsar":[74.8723,31.6340],
+    "Jalandhar":[75.5762,31.3260], "Gurgaon":[77.0261,28.4595], "Pune":[73.8567,18.5204],
+    "Nashik":[73.7898,20.0110], "Goa":[73.8320,15.2993], "Ahmedabad":[72.5714,23.0225],
+    "Nagpur":[79.0882,21.1458], "Bhopal":[77.4126,23.2599], "Indore":[75.8577,22.7196],
+    "Hyderabad":[78.4867,17.3850], "Visakhapatnam":[83.2185,17.6868], "Bangalore":[77.5946,12.9716],
+    "Mysore":[76.6394,12.2958], "Coimbatore":[76.9558,11.0168], "Chennai":[80.2707,13.0827],
+    "Kolkata":[88.3639,22.5726], "Bhubaneswar":[85.8245,20.2961], "Ranchi":[85.2799,23.3441],
+    "Aurangabad":[75.3230,19.8762], "Mangalore":[74.8526,12.9141]
+};
+
+// Projection
+const projection = d3.geoMercator().center([80,23]).scale(1200).translate([450,350]);
+let svg, g;
+
+// Zoom behavior
+const zoom = d3.zoom().scaleExtent([0.5, 10]).on("zoom", (event)=>{
+    g.attr("transform", event.transform);
+    g.selectAll("circle").attr("r", 12 / event.transform.k);
+    g.selectAll("text").attr("font-size", 12 / event.transform.k);
+    g.selectAll("line").attr("stroke-width", d=>d.shortest ? 3/event.transform.k : 1.5/event.transform.k);
+});
+
+// Draw nodes and background map
+async function drawNodes(){
+    svg = d3.select("#map").append("svg").attr("width",900).attr("height",700);
+    g = svg.append("g");
+    svg.call(zoom);
+
+    const geoData = await d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson");
+    g.selectAll("path")
+        .data(geoData.features)
+        .enter()
+        .append("path")
+        .attr("d", d3.geoPath().projection(projection))
+        .attr("fill","#f2f2f2")
+        .attr("stroke","#999");
+
+    const nodes = Object.keys(cityCoords).map(c=>{
+        const [lon,lat]=cityCoords[c]; const [x,y]=projection([lon,lat]);
+        return {id:c,x,y};
+    });
+
+    g.selectAll(".node").data(nodes).enter().append("circle").attr("class","node").attr("r",12)
+        .attr("cx",d=>d.x).attr("cy",d=>d.y);
+
+    g.selectAll("text").data(nodes).enter().append("text")
+        .attr("x",d=>d.x).attr("y",d=>d.y-15).attr("text-anchor","middle").attr("font-size",12).text(d=>d.id);
+}
+
+// Find route and draw path
+async function findRoute(){
+    let src=document.getElementById("src").value.trim();
+    let dst=document.getElementById("dst").value.trim();
+    if(!src || !dst){ alert("Enter both source and destination"); return; }
+
+    let res=await fetch(`http://127.0.0.1:5000/shortest?src=${encodeURIComponent(src)}&dst=${encodeURIComponent(dst)}`);
+    let data=await res.json();
+    if(data.error){ alert(data.error); return; }
+
+    document.getElementById("path").innerText=data.path;
+    document.getElementById("distance").innerText=data.distance;
+    document.getElementById("transfers").innerText=data.transfers;
+    document.getElementById("result").style.display="block";
+
+    const pathNodes = data.path.split(" -> ");
+    g.selectAll(".node").attr("class", d=>pathNodes.includes(d.id) ? "node shortest" : "node");
+
+    const links = pathNodes.slice(0,-1).map((d,i)=>({
+        x1: projection(cityCoords[pathNodes[i]])[0],
+        y1: projection(cityCoords[pathNodes[i]])[1],
+        x2: projection(cityCoords[pathNodes[i+1]])[0],
+        y2: projection(cityCoords[pathNodes[i+1]])[1],
+        shortest:true
+    }));
+
+    g.selectAll(".link").remove();
+    g.selectAll(".link").data(links).enter().append("line")
+        .attr("class","link shortest")
+        .attr("x1",d=>d.x1).attr("y1",d=>d.y1)
+        .attr("x2",d=>d.x2).attr("y2",d=>d.y2);
+}
+
+// Initialize
+window.onload=()=>{
+    drawNodes();
+};
+</script>
+
+</body>
+</html>
